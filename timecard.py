@@ -295,6 +295,24 @@ class TimeCardCLI(cmd.Cmd):
                               self.config.getboolean('ATR', 'ssl'))
     cmd.Cmd.__init__(self)
   
+  def _print_department(self, department):
+    print 'D: [%3d] %s' % (department.id, department.name)
+  
+  def _print_project(self, project):
+    print 'P: [%3d] %s' % (project.id, project.name)
+    for task in project.tasks:
+      self._print_task(task)
+  
+  def _print_task(self, task):
+    print '\t[%3d %3d] %s' % (task.project.id, task.id, task.name)
+  
+  def _print_template(self, template):
+    print 'T: [%3d] %s' (template.id, template.name)
+    for action in template.actions:
+      print '\t[%s] %s %s %s %s\n\t\t%s\n\t\t%s' % (action.id, 
+              action.duration, action.department.id, action.project.id, 
+              action.task.id, action.description, action.notes)
+  
   def do_add(self, s):
     '''add [OPTIONS] [starttime] [endtime] [projectId] [taskId] [description]
     Adds an entry into the local timecard database.
@@ -407,20 +425,18 @@ class TimeCardCLI(cmd.Cmd):
       # themselves.
       projects = session.query(Project).filter(Project.name.contains(search)).all()
       for project in projects:
-        print 'Project: [%3d] %s' % (project.id, project.name)
-        for task in project.tasks:
-          print '\t[%3d %3d] %s' % (project.id, task.id, task.name)
+        self._print_project(project)
       if len(projects) == 0:
         tasks = session.query(Task).filter(Task.name.contains(search)).all()
         for task in tasks:
-          print '\t[%3d %3d] %s' % (task.project.id, task.id, task.name)
+          self._print_task(task)
     
     if criteria == 'departments':
       # Here we will simply search through all the available departments and
       # return the matches.
       departments = session.query(Department).filter(Department.name.contains(search)).all()
       for department in departments:
-        print '[%3d] %s' % (department.id, department.name)
+        self._print_department(department)
     
     if criteria == 'templates':
       # Same thing as departments, however we will also print out the actions
@@ -429,11 +445,7 @@ class TimeCardCLI(cmd.Cmd):
                       Template.name.contains(search),
                       Template.description.contains(search))).all()
       for temp in temps:
-        print 'Template: [%3d] %s\n%s' % (temp.id, temp.name, temp.description)
-        for action in temp.actions:
-          print '\t[%s] %s %s %s %s\n\t\t%s\n\t\t%s' % (action.id, 
-                  action.duration, action.department.id, action.project.id, 
-                  action.task.id, action.description, action.notes)
+        self._print_template(temp)
   
   def do_list(self, s):
     '''list [OPTIONS]
@@ -464,32 +476,26 @@ class TimeCardCLI(cmd.Cmd):
       # themselves.
       projects = session.query(Project).all()
       for project in projects:
-        print 'Project: [%3d] %s' % (project.id, project.name)
-        for task in project.tasks:
-          print '\t[%3d %3d] %s' % (project.id, task.id, task.name)
+        self._print_project(project)
       if len(projects) == 0:
         tasks = session.query(Task).filter_by(name=search).all()
         for task in tasks:
-          print '\t[%3d %3d] %s' % (task.project.id, task.id, task.name)
+          self._print_task(task)
 
     if criteria == 'departments':
       # Here we will simply search through all the available departments and
       # return the matches.
       departments = session.query(Department).all()
       for department in departments:
-        print '[%03d] %s' % (department.id, department.name)
+        self._print_department(department)
 
     if criteria == 'templates':
       # Same thing as departments, however we will also print out the actions
       # for each template.
       temps = session.query(Template).all()
       for temp in temps:
-        print 'Template: [%s] %s\n%s' % (temp.id, temp.name, temp.description)
-        for action in temp.actions:
-          print '\t[%s] {%s} %s %s %s %s\n\t\t%s\n\t\t%s' % (action.id,
-                  action.stack, action.duration, action.department.id, 
-                  action.project.id, action.task.id, action.description, 
-                  action.notes)
+        self._print_template(temp)
+    
     session.close()
   
   def do_push(self, s):
@@ -555,7 +561,12 @@ class TimeCardCLI(cmd.Cmd):
       time_entries = session.query(TimeEntry)\
                         .filter(and_(TimeEntry.date >= start,
                                      TimeEntry.date <= end))
-    self.api.login()
+    
+    try:
+      self.api.login()
+    except:
+      print 'ERROR: Could not talk to host.  check your configuration.'
+      return
     for item in time_entries:
       self.api.add(item)
       print 'Pushed Entry Number %s' % item.id
