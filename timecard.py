@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.6
+#!/usr/bin/env python
 
 import httplib
 import urllib
@@ -18,7 +18,13 @@ from sqlalchemy.orm             import relationship, backref, sessionmaker
 
 Base            = declarative_base()
 
-motd = '''TimeCard PoC Version 2
+motd = '''TimeCard PoC Version 2 Build 8
+BUGS/ISSUES:
+  * Options must be specified before any arguments are set.
+  * Not all of the code has been fully baked.  Please report any issues to the
+    github repository.
+  * Documentation needs to be improved.
+  * Code needs a massive cleanup.
 '''
 
 default_config = '''
@@ -87,6 +93,27 @@ class Action(Base):
   billable      = Column(Boolean)
   description   = Column(Text)
   notes         = Column(Text)
+  
+  def gen_entry(self, t, values):
+    desc    = self.description
+    notes   = self.notes
+    for item in values:
+      desc  = desc.replace('{%s}' % item, values[item])
+      notes = notes.replace('{%s}' % item, values[item])
+    entry               = TimeEntry()
+    entry.date          = datetime.date(t.year, t.month, t.day)
+    entry.start_time    = datetime.time(t.hour, t.minute)
+    entry.end_time      = (datetime.datetime(t.year, t.month, t.day ,
+                                             t.hour, t.minute) +\
+                          datetime.timedelta(minutes=self.duration)).time()
+    entry.billable      = self.billable
+    entry.department_id = self.department_id
+    entry.project_id    = self.project_id
+    entry.task_id       = self.task_id
+    entry.description   = desc
+    entry.notes         = notes
+    return entry
+    
 
 class TimeEntry(Base):
   __tablename__ = 'entry'
@@ -192,6 +219,7 @@ class TimeCardAPI(object):
     # First thing we need to do is pull the departments.  This is actually the
     # easier of the tasks at hand as they are stored in a pretty nice and
     # easy format to parse.
+    return page
     deps      = page.find('select', {'name': 'ddl_abbr'})
     for dep in deps.findChildren():
       try:
@@ -296,22 +324,57 @@ class TimeCardCLI(cmd.Cmd):
     cmd.Cmd.__init__(self)
   
   def _print_department(self, department):
+    '''
+    Private Function:  Prints a department to the screen.
+    '''
     print 'D: [%3d] %s' % (department.id, department.name)
   
   def _print_project(self, project):
+    '''
+    Private Function:  Prints a project and all associated tasks to the screen.
+    '''
     print 'P: [%3d] %s' % (project.id, project.name)
     for task in project.tasks:
       self._print_task(task)
   
   def _print_task(self, task):
+    '''
+    Private Function:  Prints a task to the screen.
+    '''
     print '\t[%3d %3d] %s' % (task.project.id, task.id, task.name)
   
   def _print_template(self, template):
-    print 'T: [%3d] %s' (template.id, template.name)
+    '''
+    Private Function:  Prints a template and all associated actions to the screen.
+    '''
+    print 'T: [%3d] %s\n\t%s' % (template.id, template.name, 
+                                 template.description)
     for action in template.actions:
-      print '\t[%s] %s %s %s %s\n\t\t%s\n\t\t%s' % (action.id, 
-              action.duration, action.department.id, action.project.id, 
-              action.task.id, action.description, action.notes)
+      print '\t[%3d] %s %s %s %s %s\n\t\t Notes: %s' %\
+            (action.id, action.duration, action.department.id, 
+             action.project.id, action.task.id, action.description, 
+             action.notes)
+  
+  def _date(self, s):
+    try:
+      year, month, day = val.split('-')
+      return True, datetime.date(int(year), int(month), int(day))
+    except:
+      return False, 'Invalid Year Argument.  Must be YYYY-MM-DD'
+  
+  def _time(self, s):
+    try:
+      hour, minute  = s.split(':')
+      return True, datetime.time(int(hour), int(minute))
+    except:
+      return False, 'Invalid Argument.  Must be HH:MM'
+  
+  def _int(self, s):
+    try:
+      return True, int(s)
+    except:
+      return False, 'Invalid Argument.  Must be an integer.'
+      
   
   def do_add(self, s):
     '''add [OPTIONS] [starttime] [endtime] [projectId] [taskId] [description]
@@ -335,20 +398,14 @@ class TimeCardCLI(cmd.Cmd):
                   ['date=', 'billable', 'dept='])
     for opt, val in opts:
       if opt in ('-d', '--date'):
-        try:
-          year, month, day = val.split('-')
-          date  = datetime.date(int(year), int(month), int(day))
-        except:
-          print 'Invalid Year Argument.  Must be YYYY-MM-DD'
-          return
+        code, date = self._date(val)
+        if not code: print date; return
       if opt in ('-b', '--billable'):
         entry.billable = True
       if opt in ('-D', '--dept'):
-        try:
-          entry.department_id = int(val)
-        except:
-          print 'Invalid Department id.  Must be an integer.'
-          return
+        code, did = self._int(val)
+        if not code: print did; return
+        entry.department_id = did
     
     # Now we are going to setup the entry object.  The try blocks are setup
     # so that if any of the inputs are not what we expect we can tell the
@@ -526,27 +583,16 @@ class TimeCardCLI(cmd.Cmd):
                                   ['date=', 'entry=', 'week='])
     for opt, val in opts:
       if opt in ('-d', '--date'):
-        try:
-          year, month, day = val.split('-')
-          date = datetime.date(year, month, day)
-        except:
-          print 'Invalid Date format.  Must be YYYY-MM-DD.'
-          return
+        code, date = self._date(val)
+        if not code: print date; return
       if opt in ('-e', '--entry') and stype == 'date':
-        try:
-          entry = int(val)
-          stype = 'entry'
-        except:
-          print 'Invalid Entry format.  Mist be integer.'
-          return
+        stype = 'entry'
+        code, entry = self._int(val)
+        if not code: print entry; return
       if opt in ('-w', '--week') and stype == 'date':
-        try:
-          year, month, day = val.split('-')
-          week = datetime.date(year, month, day)
-          stype = 'week'
-        except:
-          print 'Invalid Date format.  Must be YYYY-MM-DD.'
-          return
+        stype = 'week'
+        start = date - datetime.timedelta(int(date.strftime('%w')))
+        end   = start + datetime.timedelta(6)
     
     time_entries = []
     if stype == 'date':
@@ -556,8 +602,6 @@ class TimeCardCLI(cmd.Cmd):
       time_entries = session.query(TimeEntry)\
                         .filter_by(id=entry).all()
     if stype == 'week':
-      start = date - datetime.timedelta(int(date.strftime('%w')))
-      end   = start + datetime.timedelta(6)
       time_entries = session.query(TimeEntry)\
                         .filter(and_(TimeEntry.date >= start,
                                      TimeEntry.date <= end))
@@ -640,18 +684,12 @@ class TimeCardCLI(cmd.Cmd):
     for opt, val in opts:
       if opt in ('-d', '--date'):
         delete = 'date'
-        try:
-          year, month, day = val.split('-')
-          date    = datetime.date(int(year), int(month), int(day))
-        except:
-          print 'Invalid Year Argument.  Must be YYYY-MM-DD'
-          return
+        code, date = self._date(val)
+        if not code: print date; return
       if opt in ('-e', '--entry'):
-        try:
-          delete  = 'entry'
-          eid     = val
-        except:
-          print 'Invalid Entry Argument.  Must be an integer'
+        delete  = 'entry'
+        code, eid = self._int(val)
+        if not code: print eid; return
     
     if delete == 'date':
       session.query(TimeEntry).filter(TimeEntry.date == date).delete()
@@ -662,7 +700,14 @@ class TimeCardCLI(cmd.Cmd):
     session.commit()
     session.close()
   
-  def do_tmpl_run(self, s):
+  def do_run(self, s):
+    '''run [OPTIONS] [template_name] [time]
+    The run function wil run a template with the options that were specified.
+    
+     -d (--date) [DATE]         Overrides the current date with the provided one.
+     -f (--field) [NAME:VALUE]  Will add the name/value pair to the fields to
+                                be replace dictionary.
+    '''
     session = self.smaker()
     date    = datetime.date.today()
     fields  = {}
@@ -681,14 +726,13 @@ class TimeCardCLI(cmd.Cmd):
       if opt in ('-f', '--field'):
         try:
           dset = val.split(':')
-          fields[dset[0]] = dset[1]
+          fields[dset[0].upper()] = dset[1]
         except:
           print 'Invalid Field Parameter.  Must be name:value'
     if args < 2:
       print 'Not enough Arguments.'
       return
     try:
-      tmpl_id       = int(args[0])
       hour, minute  = args[1].split(':')
       start_time    = datetime.datetime(date.year, date.month, date.day, 
                                         int(hour), int(minute))
@@ -696,24 +740,97 @@ class TimeCardCLI(cmd.Cmd):
       print 'Invalid Parameters, cannot run template.'
       return
     try:
-      template  = session.query(Template).filter_by(id=tmpl_id).one()
+      template  = session.query(Template).filter_by(name=args[0]).one()
     except:
       print 'Not a valid Template ID.'
       return
     tracker = start_time
     for action in template.actions:
-      entry, tracker = action.gen_entry(tracker, fields)
+      entry   = action.gen_entry(tracker, fields)
+      tracker = tracker + datetime.timedelta(minutes=action.duration)
       session.add(entry)
     session.commit()
     
   def do_tmpl_new(self, s):
-    pass
+    '''tmpl_new
+    Asks the user for the values needed to create a new template.  The name
+    must not contain spaces, however there is no restriction on the 
+    description field.
+    '''
+    tmpl = Template()
+    tmpl.name         = raw_input('Enter Name : ')
+    tmpl.description  = raw_input('Enter Description : ')
+    session = self.smaker()
+    session.add(tmpl)
+    session.commit()
+    session.close() 
   
-  def do_tmpl_action(self, s):
-    pass
+  def do_tmpl_add(self, s):
+    '''tmpl_add [OPTIONS] [template_name] [stack_id] [duration] 
+                  [department_id] [project_id] [task_id] [description]
+    
+    Creates a new action for the specified template.  Also note that in the
+    description and notes fields, if the user uses {field_name}, then that can
+    be replaced when running the template by specifying -f field_name:value.
+    
+     -b (--billable)        Sets the billable flag to true.
+    '''
+    session         = self.smaker()
+    action          = Action()
+    action.billable = False
+    # First thing we need to see if there are any optional arguments in the
+    # line and parse those first.  If there are any we will override the
+    # default settings that have already been specified.
+    opts, args  = getopt.getopt(s.split(), 'd:l', ['date=','long'])
+    
+    for opt, val in opts:
+      if opt in ('-b', '--billable'):
+        action.billable = True
+    
+    try:
+      template  = session.query(Template).filter_by(name=args[0]).one()
+    except:
+      print 'Could not find a template by that name.'
+      return
+    
+    if len(args) >= 6:
+      try:
+        action.template_id    = template.id
+        action.stack          = int(args[1])
+        action.duration       = int(args[2])
+        action.department_id  = int(args[3])
+        action.project_id     = int(args[4])
+        action.task_id        = int(args[5])
+      except:
+        print 'Invalid Input, Argument was not integer.'
+        return
+      if len(args) > 6:
+        action.description    = ' '.join(args[6:])
+      else:
+        action.description    = raw_input('Enter Description : ')
+      action.notes            = raw_input('      Enter Notes : ')
+      
+    try:
+      session.add(action)
+      session.commit()
+    except:
+      print 'Could not add action to database.'
+      session.close()
+    else:
+      print 'Action added to Database.'
+      session.close()
+    
   
   def do_tmpl_show(self, s):
-    pass
+    '''tshow [NAME]
+    Shows the current template and it's associated actions.
+    '''
+    session = self.smaker()
+    try:
+      tmpl  = session.query(Template).filter_by(name=s).one()
+      self._print_template(tmpl)
+    except:
+      print 'Could not find any templates by that name.'
   
   def do_show(self, s):
     '''show [OPTIONS]
