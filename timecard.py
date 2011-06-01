@@ -276,7 +276,6 @@ class TimeCardAPI(object):
               'notes': '',
            'ddl_abbr': entry.department.id,
         'ddl_project': entry.project.id,
-              'tasks': entry.task.id,
         'date_from_f': entry.date.strftime('%m/%d/%Y'),
            'dtm_from': entry.start_time.strftime('%H:%M'),
           'date_to_f': entry.date.strftime('%m/%d/%Y'),
@@ -288,6 +287,8 @@ class TimeCardAPI(object):
         'is_billable': entry.billable,
                'link': 1,
     }
+    if entry.task_id is not None:
+      payload['tasks'] = entry.task.id
     self._post('/atrweb/operate.asp', payload)
 
 class TimeCardCLI(cmd.Cmd):
@@ -431,7 +432,8 @@ class TimeCardCLI(cmd.Cmd):
         print 'Invalid Project id.  Must be integer.'
         return
       try:
-        entry.task_id     = int(args[3])
+        if args[3] != 'none':
+          entry.task_id     = int(args[3])
       except:
         print 'Invalid Task id.  Must be ineteger.'
         return
@@ -870,20 +872,26 @@ class TimeCardCLI(cmd.Cmd):
             '%-4s %s %-10s %-5s %-5s %-5s %-5s %-5s %-30s'    %\
             ('-'*4, '-', '-'*10, '-'*5, '-'*5, '-'*5, '-'*5, '-'*5, '-'*30)
     for entry in entries:
+      if entry.task is None:
+        tname = ''
+        tid   = 0
+      else:
+        tname = entry.task.name
+        tid = entry.task.id
       if lform:
         print '%-4d %s %-10s %-5s %-5s %-30s %-30s %-40s %-30s' %\
               (entry.id, bill[entry.billable], entry.date.strftime('%Y-%m-%d'),
                entry.start_time.strftime('%H:%M'), entry.end_time.strftime('%H:%M'),
                '%-25s[%3d]' % (entry.department.name[:25], entry.department.id), 
                '%-25s[%3d]' % (entry.project.name[:25], entry.project.id),
-               '%-35s[%3d]' % (entry.task.name[:35], entry.task.id),
+               '%-35s[%3d]' % (tname[:35], tid),
                entry.description)
       else:
         print '%-4s %s %-10s %-5s %-5s %-5s %-5s %-5s %-30s' %\
               (entry.id, bill[entry.billable], entry.date.strftime('%Y-%m-%d'),
                entry.start_time.strftime('%H:%M'), entry.end_time.strftime('%H:%M'),
                '[%3d]' % entry.department.id, '[%3d]' % entry.project.id,
-               '[%3d]' % entry.task.id, entry.description)
+               '[%3d]' % tid, entry.description)
     
   
   def do_quit(self, s):
