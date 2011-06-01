@@ -356,24 +356,24 @@ class TimeCardCLI(cmd.Cmd):
              action.notes)
   
   def _date(self, s):
-    try:
-      year, month, day = val.split('-')
-      return True, datetime.date(int(year), int(month), int(day))
-    except:
-      return False, 'Invalid Year Argument.  Must be YYYY-MM-DD'
-  
+   try:
+     year, month, day = s.strip().split('-')
+     return True, datetime.date(int(year), int(month), int(day))
+   except:
+     return False, 'Invalid Year Argument.  Must be YYYY-MM-DD'
+
   def _time(self, s):
-    try:
-      hour, minute  = s.split(':')
-      return True, datetime.time(int(hour), int(minute))
-    except:
-      return False, 'Invalid Argument.  Must be HH:MM'
-  
+   try:
+     hour, minute  = s.strip().split(':')
+     return True, datetime.time(int(hour), int(minute))
+   except:
+     return False, 'Invalid Argument.  Must be HH:MM'
+
   def _int(self, s):
-    try:
-      return True, int(s)
-    except:
-      return False, 'Invalid Argument.  Must be an integer.'
+   try:
+     return True, int(s)
+   except:
+     return False, 'Invalid Argument.  Must be an integer.'
       
   
   def do_add(self, s):
