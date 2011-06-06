@@ -219,7 +219,6 @@ class TimeCardAPI(object):
     # First thing we need to do is pull the departments.  This is actually the
     # easier of the tasks at hand as they are stored in a pretty nice and
     # easy format to parse.
-    return page
     deps      = page.find('select', {'name': 'ddl_abbr'})
     for dep in deps.findChildren():
       try:
